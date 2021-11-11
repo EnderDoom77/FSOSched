@@ -23,8 +23,7 @@
         },
         {
             "name": "Q1",
-            "mode": "RR",
-            "quantum": 4,
+            "mode": "RR 4",
             "priority": 1,
             "preemptive": true
         }
