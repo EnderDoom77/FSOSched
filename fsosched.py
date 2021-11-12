@@ -82,8 +82,6 @@ class Process(Task):
             self.burst_i += 1
             if not self.has_completed():
                 self.rem_time = self.bursts[self.burst_i]
-            
-        pass # NEEDS TO BE IMPLEMENTED
   
 class Queue(Task):
     def __init__(self, dictionary : dict, parent_queue = None):
@@ -150,7 +148,7 @@ class Queue(Task):
     def is_empty(self) -> bool:
         return bool(self.tasks)
     
-    def find_subtask(self, name : str) -> Task:
+    def find_subtask(self, name : str) -> Task | None:
         if self.name == name: return self
         if not self.is_superqueue: return None
         for q in self.subqueues:
@@ -212,6 +210,17 @@ frames : list[Frame] = list()
 while not(cpu_queue.is_empty() and io_queue.is_empty() and not suspended_processes):
     reallocate_suspended()
     frames.append(Frame(t_now))
+    
+    finished = bool(suspended_processes)
+    if finished:
+        for q in [cpu_queue, io_queue]:
+            if not cpu_queue.is_empty():
+                finished = False
+                break
+            
+    if finished: 
+        break
+    
     for q in [cpu_queue, io_queue]:
         if not q.is_empty() and (p := q.burst()): 
             suspended_processes.append(p)
