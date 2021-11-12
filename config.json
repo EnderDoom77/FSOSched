@@ -1,31 +1,28 @@
 {
-    "queue_cpu": 0,
-    "queue_io": 1,
-    "arrival_queue": 3,
-    "reinsertion_queue": 2,
     "queues": [
         {
             "name": "CPU",
             "mode": "Priority",
             "preemptive": true,
-            "subqueues": [2, 3]
+            "subqueues": [
+                {
+                    "name": "Q0",
+                    "mode": "SJF",
+                    "priority": 0,
+                    "preemptive": false
+                },
+                {
+                    "name": "Q1",
+                    "mode": "RR 4",
+                    "priority": 1,
+                    "preemptive": true
+                }
+            ]
         },
         {
             "name": "IO",
             "mode": "Priority",
             "preemptive": false
-        },
-        {
-            "name": "Q0",
-            "mode": "SJF",
-            "priority": 0,
-            "preemptive": false
-        },
-        {
-            "name": "Q1",
-            "mode": "RR 4",
-            "priority": 1,
-            "preemptive": true
         }
     ],
     "processes": [
@@ -33,25 +30,29 @@
             "name": "A",
             "arrival_time": 0,
             "priority": 0,
-            "bursts": [3, 4, 1, 4, 2]
+            "bursts": [3, 4, 1, 4, 2],
+            "queues": ["Q0", "IO", "Q1", "IO", "Q1"]
         },
         {
             "name": "B",
             "arrival_time": 7,
             "priority": 1,
-            "bursts": [5, 2, 3]
+            "bursts": [5, 2, 3],
+            "queues": ["Q0", "IO", "Q1"]
         },
         {
             "name": "C",
             "arrival_time": 2,
             "priority": 2,
-            "bursts": [4, 1, 2, 5, 2]
+            "bursts": [4, 1, 2, 5, 2],
+            "queues": ["Q0", "IO", "Q1", "IO", "Q1"]
         },
         {
             "name": "D",
             "arrival_time": 4,
             "priority": 2,
-            "bursts": [2, 1, 4]
+            "bursts": [2, 1, 4],
+            "queues": ["Q0", "IO", "Q1"]
         }
     ],
     "graphics": {

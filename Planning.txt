@@ -1,0 +1,19 @@
+1. Add all awaiting/arriving processes to queues
+	1.1. When adding a process to a queue, "awaken" the queue if idle (add queue to the superqueue and remove from idle)
+
+2. Save frame (executing processes and queues are fixed)
+
+3. If CPU and IO queues are not empty, execute active process
+	3.1 increment time_since_change on executing queues
+	3.2 decrement time_remaning on processes
+	3.3 check if process completes:
+		3.3.1 remove from queue and idle (suspend) all empty supertasks
+		3.3.2 set time_since_change on all preempted supertasks to 0
+		3.3.3 put process in the waiting list
+	3.4 if process doesn't complete; check pre-empt conditions:
+		3.4.1 RR
+		3.4.2 Generic
+
+Back to step 1 until no processes remain
+
+Render frame results.
