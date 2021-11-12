@@ -25,14 +25,14 @@ class Policy:
                 self.comp = lambda ta, tb: 1
                 self.quantum = int(rrm.group(1))
                 
-    def insert(self, task : Task, queue : Queue):
+    def insert(self, task : Task, task_list : List[Task]) -> int:
         starts = 0 if self.preemptive else 1
-        for i in range(starts, len(queue.tasks)):
-            if self.comp(task, queue.tasks[i]) < 0:
-                queue.tasks.insert(i, task)
+        for i in range(starts, len(task_list)):
+            if self.comp(task, task_list[i]) < 0:
+                task_list.insert(i, task)
                 return i
-        queue.append(task)
-        return len(queue) - 1
+        task_list.append(task)
+        return len(task_list) - 1
     
     def should_preempt(self, queue : Queue) -> bool:
         if self.type == "RR":
@@ -48,13 +48,10 @@ class Task:
         self.priority : int = priority
     
     def get_burst(self) -> int:
-        return -1
+        return 1
     
     def get_remaining_time(self) -> int:
-        return -1
-    
-    def complete(self):
-        pass
+        return 1
   
 class Process(Task):
     def __init__(self, dictionary : dict):
@@ -76,7 +73,16 @@ class Process(Task):
     def get_queue_name(self) -> str:
         return self.queues[self.burst_i]
     
+    def has_completed(self) -> bool:
+        return self.burst_i > len(self.bursts)
+    
     def burst(self) -> Process | None:
+        self.rem_time -= 1
+        if self.rem_time <= 0:
+            self.burst_i += 1
+            if not self.has_completed():
+                self.rem_time = self.bursts[self.burst_i]
+            
         pass # NEEDS TO BE IMPLEMENTED
   
 class Queue(Task):
@@ -89,6 +95,9 @@ class Queue(Task):
         self.idle : List[Task] = list()
         self.policy : Policy = Policy(dictionary.get("mode", "FIFO"), dictionary.get("preemptive", False))
         self.bursts_since_last : int = 0
+        
+    def __len__(self) -> int:
+        return len(self.tasks)
         
     def get_burst(self) -> int:
         p = self.get_active_process()
@@ -173,7 +182,7 @@ io_queue = Queue(config["queue_io"])
 
 queues : Dict[str, Queue] = dict()
 def extract_queues(queue : Queue):
-    queues[queue.name] == queue
+    queues[queue.name] = queue
     for q in queue.subqueues:
         extract_queues(q)
 
@@ -187,7 +196,9 @@ for p in config["processes"]:
 def reallocate_suspended():
     to_remove = list()
     for p in suspended_processes:
-        if t_now >= p.arrival_time:
+        if p.has_completed():
+            to_remove.append(p) 
+        elif t_now >= p.arrival_time:
             q = queues[p.get_queue_name()]
             q.add(p)
             to_remove.append(p)
@@ -202,5 +213,5 @@ while not(cpu_queue.is_empty() and io_queue.is_empty() and not suspended_process
     reallocate_suspended()
     frames.append(Frame(t_now))
     for q in [cpu_queue, io_queue]:
-        if not q.is_empty():
-            if p := q.burst(): suspended_processes.append(p)
+        if not q.is_empty() and (p := q.burst()): 
+            suspended_processes.append(p)
