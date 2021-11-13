@@ -26,6 +26,7 @@
     "processes": [
         {
             "name": "A",
+            "color": "#ff0000",
             "arrival_time": 0,
             "priority": 0,
             "bursts": [3, 4, 1, 4, 2],
@@ -33,6 +34,7 @@
         },
         {
             "name": "B",
+            "color": "#00ff00",
             "arrival_time": 7,
             "priority": 1,
             "bursts": [5, 2, 3],
@@ -40,6 +42,7 @@
         },
         {
             "name": "C",
+            "color": "#0000ff",
             "arrival_time": 2,
             "priority": 2,
             "bursts": [4, 1, 2, 5, 2],
@@ -47,6 +50,7 @@
         },
         {
             "name": "D",
+            "color": "#ffff00",
             "arrival_time": 4,
             "priority": 2,
             "bursts": [2, 1, 4],
