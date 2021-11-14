@@ -79,7 +79,7 @@ class Process(Task):
         return self.queues[self.current_burst]
     
     def has_completed(self) -> bool:
-        return self.current_burst > len(self.bursts)
+        return self.current_burst >= len(self.bursts)
     
     def burst(self) -> "Process | None":
         self.rem_time -= 1
@@ -87,6 +87,8 @@ class Process(Task):
             self.current_burst += 1
             if not self.has_completed():
                 self.rem_time = self.bursts[self.current_burst]
+            return self
+        return None
                 
     def __str__(self) -> str:
         return f"{self.name}.{self.current_burst}({self.rem_time})"
@@ -134,8 +136,7 @@ class Queue(Task):
             subq.add(task)
         else:
             pos = self.policy.insert(task, self.tasks)
-            print(f"inserting process {task.name} in {self.name} (pos {pos})")
-            print(f"New tasks: {self.tasks}")
+            print(f"inserted process {task.name} in {self.get_structure()} (pos {pos})")
             task.parent_queue = self
             if self.parent_queue != None:
                 self.parent_queue.awaken(self)
@@ -149,12 +150,13 @@ class Queue(Task):
     # suspends the active task and sends it to idle
     def suspend(self):
         self.bursts_since_last = 0
+        print(f"X Suspending process {self.tasks[0].name} from {self.get_structure()}")
         self.idle.append(self.tasks.pop(0))
-        if self.is_empty() and self.parent_queue != None:
+        if self.is_empty() and (self.parent_queue != None):
             self.parent_queue.suspend()
                 
     def is_empty(self) -> bool:
-        return bool(self.tasks)
+        return self.tasks == []
     
     def find_subtask(self, name : str) -> Task | None:
         if self.name == name: return self
@@ -167,10 +169,10 @@ class Queue(Task):
     def burst(self) -> Process | None:
         t = self.get_active_task()
         if t == None:
-            return False
+            return None
         self.bursts_since_last += 1
-        proc = t.burst()
-        if t is Process and proc: # if t is a completed process (self is queue)
+        proc : Process | None = t.burst()
+        if proc != None and self.subqueues == []: # if t is a completed process (self is queue)
             self.suspend()
         elif self.policy.should_preempt(self):
             self.add(self.tasks.pop(0))
@@ -201,12 +203,16 @@ class GroupInfo:
         for q in self.pqueues:
             pl = [p for p in q.tasks if p != self.process]
             self.tasks[q.name] = pl
+            
+    def __str__(self):
+        return f"{(self.process.name if self.process != None else '-')} " + " ".join([f"{n}: {{{' '.join([p.name for p in pl])}}}" for n, pl in self.tasks.items()])
 
 class Frame:
     def __init__(self, t: int, qlist : List[Queue] = []):
         print(f"Creating frame {t}; remaining processes: {' '.join([p.name for p in suspended_processes])}")
         self.t = t
         self.groups : Dict[str, GroupInfo] = dict()
+        self.allpt = {p.name: p.rem_time for p in processes}
         for q in qlist:
             self.load_queue(q)
         print(f"CPU: {str(self.groups['CPU'].process)} - IO: {str(self.groups['IO'].process)} - {'; '.join([f'{p.name} in {p.parent_queue}' for p in processes])}")
@@ -218,17 +224,23 @@ class Frame:
 class GroupRenderer:
     def __init__(self, group_frames : List[GroupInfo]):
         self.queuesizes : Dict[str, int] = dict()
+        self.max_process_len = 0
         for f in group_frames:
             for n, q in f.tasks.items():
                 size = len(q)
                 if size > self.queuesizes.get(n, -1):
                     self.queuesizes[n] = size
+            if f.pt > self.max_process_len:
+                self.max_process_len = f.pt
         
 class GraphicsInfo:
     def __init__(self, config : dict, cpuq : Queue, ioq : Queue, frames : List[Frame]):
         self.cheight = 0
+        self.maxheight = config.get("max_window_height", 800)
         self.uwidth : int = config.get("frame_width", 20)
         self.uheight : int = config.get("item_height", 20)
+        self.ratio = math.sqrt(self.uwidth / self.uheight)
+        self.min_q_size : int = config.get("minimum_queue_size", 1)
         
         self.group_info : Dict[str, List[GroupInfo]] = dict()
         for f in frames:
@@ -236,63 +248,154 @@ class GraphicsInfo:
                 if not gn in self.group_info:
                     self.group_info[gn] = list()
                 self.group_info[gn].append(f.groups[gn])
-        
+                
+        print(f"Frame data: " + ' - '.join([f"{n}: [{', '.join([str(g) for g in gl])}]" for n, gl in self.group_info.items()]))
         self.groups = [GroupRenderer(i) for i in self.group_info.values()]
+        print(f"Completed Group Frame Construction")
+        print(" - ".join([str(g.queuesizes) for g in self.groups]))
+        self.maxpt = max([g.max_process_len for g in self.groups])
         self.queuesizes = fuse_dicts([gr.queuesizes for gr in self.groups])
+        self.queuepositions : Dict[str, int] = dict()
         
-        self.width = 2 * self.uwidth + self.get_queue_render_size(cpuq) + self.get_queue_render_size(ioq)
+        self.width = self.uwidth * (2 + self.get_queue_max_size(cpuq) + self.get_queue_max_size(ioq))
         
         self.cpu_levels = self.build_levels(cpuq)
         self.io_levels = self.build_levels(ioq)
+        self.core_pos : List[int] = list()
+        self.calc_queue_positions([self.cpu_levels, self.io_levels])
         l = max(len(self.cpu_levels), len(self.io_levels))
         for lev in [self.cpu_levels, self.io_levels]:
             while len(lev) < l:
                 lev.append(lev[-1])
         self.levels_depth = l
+        self.height = min((len(frames) + self.levels_depth + 1) * self.uheight, self.maxheight)
+        
+        self._urdif = self.uwidth / (2 * self.maxpt)
         
         self.legendlevels : List[List[str]] = list()
     
-    def get_queue_render_size(self, q : Queue):
-        if q.name in self.queuesizes: return self.queuesizes[q.name]
+    def get_queue_max_size(self, q : Queue):
+        if q.name in self.queuesizes: return max(self.queuesizes[q.name], self.min_q_size)
         if q.subqueues:
-            v = sum([self.get_queue_render_size(sq) for sq in q.subqueues])
+            v = sum([self.get_queue_max_size(sq) for sq in q.subqueues])
             self.queuesizes[q.name] = v
             return v 
         raise ValueError(f"Asked queue size of unmeasured queue: {q.name}; recognized queue names are {self.queuesizes.keys()}")
         
+    def qname_to_render_size(self, qn : str):
+        return self.uwidth * max(self.queuesizes.get(qn, 0), self.min_q_size)
+        
     def build_levels(self, rootq : Queue):
-        active : Dict[Queue, int] = {rootq: self.get_queue_render_size(rootq)}
+        active : Dict[Queue, int] = {rootq: self.get_queue_max_size(rootq)}
         result = [active]
-        while not all([q.subqueues for q in active.keys()]):
+        finished = False
+        while not finished:
+            print(f"Level building loop with active length = {active.values()}")
             na = dict()
             for q in active.keys():
-                if q.subqueues:
+                if q.subqueues != []:
                     for sq in q.subqueues:
-                        na[sq] = self.get_queue_render_size(sq)
+                        na[sq] = self.get_queue_max_size(sq)
                 else:
-                    na[q] = self.get_queue_render_size(q)
+                    na[q] = self.get_queue_max_size(q)
             active = na
             result.append(active)
             
-        return result
-            
+            finished = True
+            for q in active.keys():
+                if q.subqueues != []:
+                    finished = False
         
-    def get_relative_size(v : float, max : float):
-        return math.sqrt(v / max)
+        print(f"Resulting levels structure: {result}")
+        return result
+    
+    def calc_queue_positions(self, levellist : List[List[Dict[Queue, int]]]):
+        x = 0
+        for lev in levellist:
+            d = lev[-1]
+            for q, width in d.items():
+                self.queuepositions[q.name] = x
+                x += width * self.uwidth
+            self.core_pos.append(x)
+            x += self.uwidth
+            
+    def get_relative_size(self, v : float):
+        return math.sqrt(v / self.maxpt)
+    
+    def draw_legend(self, win : GraphWin):
+        xd = self.width / len(processes)
+        x = xd / 2
+        for p in processes:
+            txt = Text(Point(x, self.cheight + self.uheight / 2), p.name)
+            txt.setTextColor(p.color)
+            txt.draw(win)
+            x += xd
+        self.cheight += self.uheight
+        self.draw_horizontal_rule(win)
+    
+    def draw_horizontal_rule(self, win : GraphWin):
+        Line(Point(0, self.cheight), Point(self.width, self.cheight)).draw(win)
+    
+    def draw_border(self, x : int, win : GraphWin, y = -1):
+        if y < 0: y = self.cheight
+        Line(Point(x, y), Point(x, y + self.uheight)).draw(win)
     
     def draw_levels(self, win : GraphWin):
         x_base = 0
         for lev in [self.cpu_levels, self.io_levels]:
-            self.cheight = 0
+            y = self.cheight
             for l in lev:
                 x = x_base
+                self.draw_border(x, win, y = y)
                 for q, size in l.items():
-                    txt = Text(Point(x + size / 2, self.cheight + self.uheight / 2), q.name)
-                    txt.draw(win)
-                    x += size
-                self.cheight += self.uheight
+                    print(f"Printing queue {q.name} with size = {size}; x = {x}, y = {y}")
+                    render_size = self.uwidth * size
+                    Text(Point(x + render_size / 2, y + self.uheight / 2), q.name).draw(win)
+                    x += render_size
+                    self.draw_border(x, win, y = y)
+                y += self.uheight
                     
-            x_base += lev[0].values()[0] + self.uwidth
+            x_base += self.uwidth * sum(lev[0].values()) + self.uwidth
+        self.cheight += self.levels_depth * self.uheight
+        self.draw_horizontal_rule(win)
+    
+    def draw_frame(self, f : Frame, win : GraphWin):
+        x = 0
+        y = self.cheight
+        
+        core_i = 0
+        for group in f.groups.values():
+            self.draw_border(x, win)
+            for qname, pl in group.tasks.items():
+                pos = self.queuepositions[qname]
+                wid = self.qname_to_render_size(qname)
+                self.draw_queue_processes(pos, wid, f, pl, win)
+            if (p := group.process) != None: 
+                dxt = self.uwidth * group.pt / (2 * self.maxpt)
+                dxb = dxt - self._urdif
+                core_x = self.core_pos[core_i] + self.uwidth / 2
+                pol = Polygon(Point(core_x - dxt, y), Point(core_x + dxt, y), Point(core_x + dxb, y + self.uheight), Point(core_x - dxb, y + self.uheight))
+                pol.setFill(p.color)
+                pol.setOutline(p.color)
+                pol.draw(win)
+            x = self.core_pos[core_i] + self.uwidth
+            core_i += 1
+        self.cheight += self.uheight
+        
+    def draw_queue_processes(self, pos : int, width : int, f : Frame, pl : List[Process], win : GraphWin):
+        x = pos + width - self.uwidth / 2
+        y = self.cheight + self.uheight / 2
+        
+        for p in pl:
+            rs = f.allpt[p.name]
+            dy = self.uheight * self.get_relative_size(rs) / 2
+            dx = dy * self.ratio
+            rect = Rectangle(Point(x - dx, y - dy), Point(x + dx, y + dy))
+            rect.setFill(p.color)
+            rect.draw(win)
+            x -= self.uwidth
+            
+        self.draw_border(pos + width, win)
         
 config_file = open("config.json", "r")
 config = json.load(config_file)
@@ -308,7 +411,7 @@ def extract_queues(queue : Queue):
 for q in [cpu_queue, io_queue]:
     extract_queues(q)
 
-processes = list()
+processes : List[Process] = list()
 suspended_processes : List[Process] = list()
 for p in config["processes"]:
     proc = Process(p)
@@ -331,15 +434,16 @@ def reallocate_suspended():
 t_now : int = 0
 frames : list[Frame] = list()
 
-while not(cpu_queue.is_empty() and io_queue.is_empty() and not suspended_processes):
+finished = False
+while not finished:
     reallocate_suspended()
     frames.append(Frame(t_now, [cpu_queue, io_queue]))
     t_now += 1
     
-    finished = bool(suspended_processes)
+    finished = suspended_processes == []
     if finished:
         for q in [cpu_queue, io_queue]:
-            if not cpu_queue.is_empty():
+            if not q.is_empty():
                 finished = False
                 break
             
@@ -349,12 +453,30 @@ while not(cpu_queue.is_empty() and io_queue.is_empty() and not suspended_process
     for q in [cpu_queue, io_queue]:
         if not q.is_empty() and (p := q.burst()):
             suspended_processes.append(p)
-            
-graph = GraphicsInfo(config["graphics"], cpu_queue, io_queue, frames)
-win = GraphWin("Process Traceback", graph.width, 1000, autoflush=False)
 
+print("Finished creating frames") 
+graph = GraphicsInfo(config["graphics"], cpu_queue, io_queue, frames)
+print("Finished creating Graphical Info object")
+win = GraphWin("Process Traceback", graph.width, graph.height, autoflush=False)
+print("Finished creating graphical window")
+
+graph.draw_legend(win)
 graph.draw_levels(win)
+update(5)
 
 for i in frames:
-    print("printing frame!")
-    win.update(15)
+    graph.draw_frame(i, win)
+    update(15)
+
+try:
+    while k := win.getKey():
+        if k == "Down":
+            for i in win.items:
+                i.move(0, -5 * graph.uheight)
+            update()
+        elif k == "Up":
+            for i in win.items:
+                i.move(0, 5 * graph.uheight)
+            update()
+except:
+    print("Closing window")
