@@ -198,10 +198,11 @@ class GroupInfo:
     def __init__(self, q: Queue):
         self.process : Process = q.get_active_process()
         self.pt = self.process.get_remaining_time() if self.process else 0
+        self.active_queue : str = "" if self.process == None else self.process.parent_queue.name
         self.pqueues : List[Queue] = q.get_process_queues()
         self.tasks : Dict[str, List[Process]] = dict()
         for q in self.pqueues:
-            pl = [p for p in q.tasks if p != self.process]
+            pl = [p for p in q.tasks] # if p != self.process
             self.tasks[q.name] = pl
             
     def __str__(self):
@@ -365,12 +366,7 @@ class GraphicsInfo:
         
         core_i = 0
         for group in f.groups.values():
-            self.draw_border(x, win)
-            for qname, pl in group.tasks.items():
-                pos = self.queuepositions[qname]
-                wid = self.qname_to_render_size(qname)
-                self.draw_queue_processes(pos, wid, f, pl, win)
-            if (p := group.process) != None: 
+            if (p := group.process) != None:
                 dxt = self.uwidth * group.pt / (2 * self.maxpt)
                 dxb = dxt - self._urdif
                 core_x = self.core_pos[core_i] + self.uwidth / 2
@@ -378,11 +374,20 @@ class GraphicsInfo:
                 pol.setFill(p.color)
                 pol.setOutline(p.color)
                 pol.draw(win)
+            self.draw_border(x, win)
+            for qname, pl in group.tasks.items():
+                pos = self.queuepositions[qname]
+                wid = self.qname_to_render_size(qname)
+                self.draw_queue_processes(pos, wid, f, group, pl, win)
+                if qname == group.active_queue: continue
+                ln = Line(Point(pos, self.cheight), Point(pos + wid, self.cheight + self.uheight))
+                ln.setOutline("#808080")
+                ln.draw(win)
             x = self.core_pos[core_i] + self.uwidth
             core_i += 1
         self.cheight += self.uheight
         
-    def draw_queue_processes(self, pos : int, width : int, f : Frame, pl : List[Process], win : GraphWin):
+    def draw_queue_processes(self, pos : int, width : int, f : Frame, g : GroupInfo, pl : List[Process], win : GraphWin):
         x = pos + width - self.uwidth / 2
         y = self.cheight + self.uheight / 2
         
@@ -390,9 +395,12 @@ class GraphicsInfo:
             rs = f.allpt[p.name]
             dy = self.uheight * self.get_relative_size(rs) / 2
             dx = dy * self.ratio
-            rect = Rectangle(Point(x - dx, y - dy), Point(x + dx, y + dy))
-            rect.setFill(p.color)
-            rect.draw(win)
+            if p != g.process:
+                fig = Rectangle(Point(x - dx, y - dy), Point(x + dx, y + dy))
+            else:
+                fig = Polygon(Point(x - dx, y - dy), Point(x + dx, y), Point(x - dx, y + dy))
+            fig.setFill(p.color)
+            fig.draw(win)
             x -= self.uwidth
             
         self.draw_border(pos + width, win)
