@@ -14,3 +14,9 @@ All processes support customization options; you must set at least "bursts" and 
 Setting the insertion queue of a process to a superqueue will have it randomly inserted into one of the queues subqueues.
 
 Once rendered, pressing "Down" (down arrow) or "Up" (up arrow) will move the resulting rendered graphic.
+
+## Requirements and Dependencies
+
+* Python 3.10+
+* graphics.py v5.0+ (included in repository)
+* tkinter library
