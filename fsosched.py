@@ -68,6 +68,8 @@ class Process(Task):
         self.color : str = dictionary.get("color", "black")
         
         self.arrival_time : int = dictionary.get("arrival_time", 0)
+        self.completion_time : int = -1
+        self.time_cost : int = sum(self.bursts)
         
     def get_burst(self) -> int:
         return self.bursts[self.current_burst]
@@ -102,6 +104,8 @@ class Queue(Task):
         self.idle : List[Task] = [q for q in self.subqueues]
         self.policy : Policy = Policy(dictionary.get("mode", "FIFO"), dictionary.get("preemptive", False))
         self.bursts_since_last : int = 0
+        
+        self.color = dictionary.get("color", "#000000")
         
     def __len__(self) -> int:
         return len(self.tasks)
@@ -242,6 +246,9 @@ class GraphicsInfo:
         self.uheight : int = config.get("item_height", 20)
         self.ratio = math.sqrt(self.uwidth / self.uheight)
         self.min_q_size : int = config.get("minimum_queue_size", 1)
+        self.background_c : str = config.get("background_color", "#ffffff")
+        self.border_c : str = config.get("border_color", "#000000")
+        self.edge_c : str = config.get("edge_color", "#000000")
         
         self.group_info : Dict[str, List[GroupInfo]] = dict()
         for f in frames:
@@ -323,6 +330,9 @@ class GraphicsInfo:
     def get_relative_size(self, v : float):
         return math.sqrt(v / self.maxpt)
     
+    def draw_init(self, win : GraphWin):
+        win.setBackground(self.background_c)
+    
     def draw_legend(self, win : GraphWin):
         xd = self.width / len(processes)
         x = xd / 2
@@ -335,11 +345,15 @@ class GraphicsInfo:
         self.draw_horizontal_rule(win)
     
     def draw_horizontal_rule(self, win : GraphWin):
-        Line(Point(0, self.cheight), Point(self.width, self.cheight)).draw(win)
+        ln = Line(Point(0, self.cheight), Point(self.width, self.cheight))
+        ln.setOutline(self.border_c)
+        ln.draw(win)
     
     def draw_border(self, x : int, win : GraphWin, y = -1):
         if y < 0: y = self.cheight
-        Line(Point(x, y), Point(x, y + self.uheight)).draw(win)
+        ln = Line(Point(x, y), Point(x, y + self.uheight))
+        ln.setOutline(self.border_c)
+        ln.draw(win)
     
     def draw_levels(self, win : GraphWin):
         x_base = 0
@@ -351,7 +365,9 @@ class GraphicsInfo:
                 for q, size in l.items():
                     print(f"Printing queue {q.name} with size = {size}; x = {x}, y = {y}")
                     render_size = self.uwidth * size
-                    Text(Point(x + render_size / 2, y + self.uheight / 2), q.name).draw(win)
+                    txt = Text(Point(x + render_size / 2, y + self.uheight / 2), q.name)
+                    txt.setTextColor(q.color)
+                    txt.draw(win)
                     x += render_size
                     self.draw_border(x, win, y = y)
                 y += self.uheight
@@ -400,6 +416,7 @@ class GraphicsInfo:
             else:
                 fig = Polygon(Point(x - dx, y - dy), Point(x + dx, y), Point(x - dx, y + dy))
             fig.setFill(p.color)
+            fig.setOutline(self.edge_c)
             fig.draw(win)
             x -= self.uwidth
             
@@ -430,7 +447,8 @@ def reallocate_suspended():
     to_remove = list()
     for p in suspended_processes:
         if p.has_completed():
-            to_remove.append(p) 
+            to_remove.append(p)
+            p.completion_time = t_now
         elif t_now >= p.arrival_time:
             q = queues[p.get_queue_name()]
             q.add(p)
@@ -462,11 +480,18 @@ while not finished:
         if not q.is_empty() and (p := q.burst()):
             suspended_processes.append(p)
 
+with open("out.txt", "w") as out:
+    for p in processes:
+        wait_t = p.completion_time - p.arrival_time - p.time_cost
+        out.write(f"{p.name}: COST = {p.time_cost}, TIME RANGE = [{p.arrival_time}..{p.completion_time}], WAITING = {wait_t}\n")
+
 print("Finished creating frames") 
 graph = GraphicsInfo(config["graphics"], cpu_queue, io_queue, frames)
 print("Finished creating Graphical Info object")
 win = GraphWin("Process Traceback", graph.width, graph.height, autoflush=False)
+graph.draw_init(win)
 print("Finished creating graphical window")
+
 
 graph.draw_legend(win)
 graph.draw_levels(win)
