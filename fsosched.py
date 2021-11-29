@@ -265,7 +265,7 @@ class GraphicsInfo:
         self.queuesizes = fuse_dicts([gr.queuesizes for gr in self.groups])
         self.queuepositions : Dict[str, int] = dict()
         
-        self.width = self.uwidth * (2 + self.get_queue_max_size(cpuq) + self.get_queue_max_size(ioq))
+        self.width = self.uwidth * (4 + self.get_queue_max_size(cpuq) + self.get_queue_max_size(ioq))
         
         self.cpu_levels = self.build_levels(cpuq)
         self.io_levels = self.build_levels(ioq)
@@ -318,7 +318,7 @@ class GraphicsInfo:
         return result
     
     def calc_queue_positions(self, levellist : List[List[Dict[Queue, int]]]):
-        x = 0
+        x = self.uwidth * 2
         for lev in levellist:
             d = lev[-1]
             for q, width in d.items():
@@ -356,7 +356,7 @@ class GraphicsInfo:
         ln.draw(win)
     
     def draw_levels(self, win : GraphWin):
-        x_base = 0
+        x_base = self.uwidth * 2
         for lev in [self.cpu_levels, self.io_levels]:
             y = self.cheight
             for l in lev:
@@ -377,8 +377,12 @@ class GraphicsInfo:
         self.draw_horizontal_rule(win)
     
     def draw_frame(self, f : Frame, win : GraphWin):
-        x = 0
+        x = self.uwidth * 2
         y = self.cheight
+        
+        num = Text(Point(x - self.uwidth, y + self.uheight / 2), str(f.t))
+        num.setTextColor(self.border_c)
+        num.draw(win)
         
         core_i = 0
         for group in f.groups.values():
