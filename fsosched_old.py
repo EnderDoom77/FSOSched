@@ -181,7 +181,7 @@ class Queue(Process):
                         maxq = q
                 return None if maxq.is_empty() else maxq
             elif self.mode == "RR":
-                
+                pass
             else:
                 raise ValueError(f"Unsupported scheduling policy for superqueue: {self.mode}")
         else:

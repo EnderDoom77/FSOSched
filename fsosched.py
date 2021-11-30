@@ -485,6 +485,9 @@ with open("out.txt", "w") as out:
         wait_t = p.completion_time - p.arrival_time - p.time_cost
         out.write(f"{p.name}: COST = {p.time_cost}, TIME RANGE = [{p.arrival_time}..{p.completion_time}], WAITING = {wait_t}\n")
 
+options = config.get("options", dict())
+stepbystep = options.get("step_by_step_rendering", False)
+
 print("Finished creating frames") 
 graph = GraphicsInfo(config["graphics"], cpu_queue, io_queue, frames)
 print("Finished creating Graphical Info object")
@@ -492,12 +495,13 @@ win = GraphWin("Process Traceback", graph.width, graph.height, autoflush=False)
 graph.draw_init(win)
 print("Finished creating graphical window")
 
-
 graph.draw_legend(win)
 graph.draw_levels(win)
 update(5)
 
 for i in frames:
+    if stepbystep:
+        win.getMouse()
     graph.draw_frame(i, win)
     update(15)
 

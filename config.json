@@ -77,5 +77,8 @@
         "item_height": 20,
         "minimum_queue_size": 2,
         "max_window_height": 800
+    },
+    "options": {
+        "step_by_step_rendering": true
     }
 }
