@@ -519,5 +519,5 @@ try:
             for i in win.items:
                 i.move(0, 5 * graph.uheight)
             update()
-except:
+except GraphicsError:
     print("Closing window")
