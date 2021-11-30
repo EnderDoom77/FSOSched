@@ -79,6 +79,6 @@
         "max_window_height": 800
     },
     "options": {
-        "step_by_step_rendering": true
+        "step_by_step_rendering": false
     }
 }

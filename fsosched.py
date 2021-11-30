@@ -134,7 +134,6 @@ class Queue(Task):
         is_queue = isinstance(task, Queue)
         if not self.subqueues and is_queue: raise TypeError("Attempt to insert queue into non-superqueue")
         
-        self.bursts_since_last = 0
         if self.subqueues and not is_queue: 
             subq = random.choice(self.subqueues)
             subq.add(task)
@@ -158,7 +157,14 @@ class Queue(Task):
         self.idle.append(self.tasks.pop(0))
         if self.is_empty() and (self.parent_queue != None):
             self.parent_queue.suspend()
-                
+    
+    def check_preemption(self):
+        if self.policy.should_preempt(self):
+            self.add(self.tasks.pop(0))
+            self.bursts_since_last = 0
+        for q in self.subqueues:
+            q.check_preemption()
+    
     def is_empty(self) -> bool:
         return self.tasks == []
     
@@ -178,9 +184,6 @@ class Queue(Task):
         proc : Process | None = t.burst()
         if proc != None and self.subqueues == []: # if t is a completed process (self is queue)
             self.suspend()
-        elif self.policy.should_preempt(self):
-            self.add(self.tasks.pop(0))
-            self.bursts_since_last = 0
         return proc
     
     def get_process_queues(self) -> List["Queue"]:
@@ -461,12 +464,17 @@ def reallocate_suspended():
     for p in to_remove:
         suspended_processes.remove(p)
     
+def check_preemption():
+    for q in [cpu_queue, io_queue]:
+        q.check_preemption()
+    
 t_now : int = 0
 frames : list[Frame] = list()
 
 finished = False
 while not finished:
     reallocate_suspended()
+    check_preemption()
     frames.append(Frame(t_now, [cpu_queue, io_queue]))
     t_now += 1
     
