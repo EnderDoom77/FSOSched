@@ -39,6 +39,7 @@ class Policy:
         return len(task_list) - 1
     
     def should_preempt(self, queue : "Queue") -> bool:
+        if not self.preemptive: return False
         if self.type == "RR":
             return queue.bursts_since_last >= self.quantum and len(queue.tasks) > 1
         else:
