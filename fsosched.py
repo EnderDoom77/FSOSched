@@ -354,7 +354,8 @@ class GraphicsInfo:
         ln.draw(win)
     
     def draw_border(self, x : int, win : GraphWin, y = -1):
-        if y < 0: y = self.cheight
+        global offset
+        if y < 0: y = self.cheight + offset
         ln = Line(Point(x, y), Point(x, y + self.uheight))
         ln.setOutline(self.border_c)
         ln.draw(win)
@@ -381,8 +382,9 @@ class GraphicsInfo:
         self.draw_horizontal_rule(win)
     
     def draw_frame(self, f : Frame, win : GraphWin):
+        global offset
         x = self.uwidth * 2
-        y = self.cheight
+        y = self.cheight + offset
         
         num = Text(Point(x - self.uwidth, y + self.uheight / 2), str(f.t))
         num.setTextColor(self.border_c)
@@ -404,7 +406,7 @@ class GraphicsInfo:
                 wid = self.qname_to_render_size(qname)
                 self.draw_queue_processes(pos, wid, f, group, pl, win)
                 if qname == group.active_queue: continue
-                ln = Line(Point(pos, self.cheight), Point(pos + wid, self.cheight + self.uheight))
+                ln = Line(Point(pos, y), Point(pos + wid, y + self.uheight))
                 ln.setOutline("#808080")
                 ln.draw(win)
             x = self.core_pos[core_i] + self.uwidth
@@ -412,8 +414,9 @@ class GraphicsInfo:
         self.cheight += self.uheight
         
     def draw_queue_processes(self, pos : int, width : int, f : Frame, g : GroupInfo, pl : List[Process], win : GraphWin):
+        global offset
         x = pos + width - self.uwidth / 2
-        y = self.cheight + self.uheight / 2
+        y = self.cheight + self.uheight / 2 + offset
         
         for p in pl:
             rs = f.allpt[p.name]
@@ -512,21 +515,40 @@ graph.draw_legend(win)
 graph.draw_levels(win)
 update(5)
 
-for i in frames:
-    if stepbystep:
-        win.getMouse()
-    graph.draw_frame(i, win)
-    update(15)
+drawn_frames : int = 0
+offset = 0
+if not stepbystep:
+    for i in frames:    
+        graph.draw_frame(i, win)
+        drawn_frames += 1
+        update(15)
 
-try:
-    while k := win.getKey():
-        if k == "Down":
-            for i in win.items:
-                i.move(0, -5 * graph.uheight)
-            update()
-        elif k == "Up":
-            for i in win.items:
-                i.move(0, 5 * graph.uheight)
-            update()
-except GraphicsError:
-    print("Closing window")
+def _onclick(pos):
+    global drawn_frames
+    global lasty
+    lasty = pos.y
+    if (drawn_frames) < len(frames):
+        graph.draw_frame(frames[drawn_frames], win)
+        drawn_frames += 1
+
+def _moveall(v):
+    global offset
+    offset += v
+    print(offset)
+    for i in win.items:
+        i.move(0, v)
+    update()
+    
+lasty = 0
+def _onmove(e):
+    global lasty
+    diff = e.y - lasty
+    if (abs(diff) > 25):
+        diff = 25 if diff > 0 else -25
+    _moveall(diff)
+    lasty = e.y
+
+win.bind("<Button-1>", _onclick)
+win.bind("<B1-Motion>", _onmove)
+
+tk.mainloop()
